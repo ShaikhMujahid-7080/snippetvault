@@ -48,14 +48,18 @@ function App() {
   const [view, setView] = useState('all'); // 'all', 'favorites'
 
   const filteredSnippets = useMemo(() => {
+    // Ensure snippets is an array before filtering
+    if (!Array.isArray(snippets)) {
+      return [];
+    }
     return snippets.filter(snippet => {
       const matchesSearch = snippet.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           snippet.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                           snippet.tags?.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()));
-      
+        snippet.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        snippet.tags?.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()));
+
       const matchesCategory = !filters.category || snippet.category === filters.category;
       const matchesFavorites = view === 'all' || (view === 'favorites' && snippet.isFavorite);
-      
+
       return matchesSearch && matchesCategory && matchesFavorites;
     });
   }, [snippets, searchTerm, filters, view]);
@@ -81,7 +85,7 @@ function App() {
   };
 
   const handleToggleFavorite = (id) => {
-    setSnippets(prev => prev.map(s => 
+    setSnippets(prev => prev.map(s =>
       s.id === id ? { ...s, isFavorite: !s.isFavorite } : s
     ));
   };
@@ -121,17 +125,16 @@ function App() {
                 Your personal code snippet manager
               </p>
             </div>
-            
+
             <div className="flex items-center gap-3">
               <ThemeToggle />
-              
+
               <button
                 onClick={() => setView(view === 'all' ? 'favorites' : 'all')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
-                  view === 'favorites' 
-                    ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300' 
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${view === 'favorites'
+                    ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300'
                     : 'glass-effect hover:bg-white/20 dark:hover:bg-gray-700/30 text-gray-700 dark:text-gray-300'
-                }`}
+                  }`}
               >
                 <MdFavorite className="w-4 h-4" />
                 Favorites ({favoriteCount})
@@ -222,9 +225,9 @@ function App() {
                 {view === 'favorites' ? 'No favorites yet' : 'No snippets found'}
               </h3>
               <p className="text-gray-500 dark:text-gray-400">
-                {view === 'favorites' 
-                  ? 'Star some snippets to see them here!' 
-                  : searchTerm 
+                {view === 'favorites'
+                  ? 'Star some snippets to see them here!'
+                  : searchTerm
                     ? 'Try adjusting your search terms'
                     : 'Create your first snippet to get started'
                 }

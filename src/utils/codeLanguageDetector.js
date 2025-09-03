@@ -60,7 +60,7 @@ export const detectLanguage = (code) => {
       /^\s*\*\s+/m,
       /^\s*\d+\.\s+/m,
       /^>/m,
-      /``` /
+      /```/
     ],
     sql: [
       /SELECT\s+/i,
