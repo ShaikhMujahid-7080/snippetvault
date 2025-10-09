@@ -1,61 +1,213 @@
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc } from "firebase/firestore";
-import { db } from "../firebase";
+import { db } from './firebase';
+import { 
+  collection, 
+  addDoc, 
+  getDocs, 
+  doc, 
+  updateDoc, 
+  deleteDoc, 
+  query,
+  where
+} from 'firebase/firestore';
 
-const SNIPPET_COLLECTION = "snippets";
+const COLLECTION_NAME = 'snippets';
 
-// Helper: ensure ID is a string
-const ensureStringId = (id) => {
-  return String(id);
+// Function to sanitize data for Firestore - only allows primitive types and arrays
+const sanitizeFirestoreData = (data) => {
+  if (data === null || data === undefined) {
+    return null;
+  }
+
+  if (typeof data === 'string' || typeof data === 'number' || typeof data === 'boolean') {
+    return data;
+  }
+
+  if (Array.isArray(data)) {
+    return data
+      .filter(item => item !== undefined && item !== null)
+      .map(item => sanitizeFirestoreData(item));
+  }
+
+  if (typeof data === 'object') {
+    const sanitized = {};
+    for (const [key, value] of Object.entries(data)) {
+      // Skip undefined values, functions, and the id field
+      if (value !== undefined && typeof value !== 'function' && key !== 'id') {
+        sanitized[key] = sanitizeFirestoreData(value);
+      }
+    }
+    return sanitized;
+  }
+
+  // Skip functions, undefined, symbols, etc.
+  return null;
 };
 
-// Helper: clean snippet data for Firestore (remove id and ensure plain object)
-const cleanSnippetData = (snippet) => {
-  const { id, ...rest } = snippet;
-  return JSON.parse(JSON.stringify(rest));
-};
+// Get all snippets for a specific user
+export const getAllSnippets = async (userId) => {
+  if (!userId || typeof userId !== 'string') {
+    console.error('Valid user ID string is required for getAllSnippets');
+    return [];
+  }
 
-export const getAllSnippets = async () => {
   try {
-    const snap = await getDocs(collection(db, SNIPPET_COLLECTION));
-    return snap.docs.map(doc => ({ ...doc.data(), id: doc.id }));
+    console.log('Fetching snippets for user:', userId);
+    
+    const q = query(
+      collection(db, COLLECTION_NAME),
+      where('userId', '==', userId)
+    );
+    
+    const querySnapshot = await getDocs(q);
+    const snippets = [];
+    
+    querySnapshot.forEach((docSnapshot) => {
+      snippets.push({
+        id: docSnapshot.id,
+        ...docSnapshot.data()
+      });
+    });
+    
+    console.log('Fetched snippets:', snippets.length);
+    
+    // Sort client-side by creation date
+    return snippets.sort((a, b) => {
+      const dateA = new Date(a.createdAt || 0);
+      const dateB = new Date(b.createdAt || 0);
+      return dateB - dateA;
+    });
+    
   } catch (error) {
-    console.error("Error fetching snippets:", error);
-    throw error;
+    console.error('Error in getAllSnippets:', error);
+    return [];
   }
 };
 
-export const addSnippet = async (snippet) => {
+// Add new snippet
+export const addSnippet = async (snippetData, userId) => {
+  if (!userId || typeof userId !== 'string') {
+    throw new Error('Valid user ID string is required');
+  }
+
+  if (!snippetData || typeof snippetData !== 'object') {
+    throw new Error('Valid snippet data object is required');
+  }
+
   try {
-    const cleanData = cleanSnippetData(snippet);
-    const docRef = await addDoc(collection(db, SNIPPET_COLLECTION), cleanData);
-    return docRef;
+    console.log('Adding snippet for user:', userId);
+    
+    // Sanitize the snippet data
+    const cleanData = sanitizeFirestoreData(snippetData);
+    
+    const docData = {
+      ...cleanData,
+      userId: userId,
+      createdAt: cleanData.createdAt || new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    
+    console.log('Sanitized document data:', docData);
+    
+    const docRef = await addDoc(collection(db, COLLECTION_NAME), docData);
+    console.log('Snippet added with ID:', docRef.id);
+    
+    return docRef.id;
   } catch (error) {
-    console.error("Error adding snippet:", error);
-    throw error;
+    console.error('Error adding snippet:', error);
+    throw new Error(`Failed to add snippet: ${error.message}`);
   }
 };
 
-export const updateSnippet = async (id, snippet) => {
+// Update existing snippet
+export const updateSnippet = async (id, snippetData, userId) => {
+  if (!userId || typeof userId !== 'string') {
+    throw new Error('Valid user ID string is required');
+  }
+  
+  if (!id || typeof id !== 'string') {
+    throw new Error('Valid snippet ID string is required');
+  }
+  
+  if (!snippetData || typeof snippetData !== 'object') {
+    throw new Error('Valid snippet data object is required');
+  }
+
   try {
-    // Ensure ID is a string
-    const stringId = ensureStringId(id);
-    const cleanData = cleanSnippetData(snippet);
-
-    console.log("Updating snippet with ID:", stringId, "Data:", cleanData);
-
-    await updateDoc(doc(db, SNIPPET_COLLECTION, stringId), cleanData);
+    console.log('Updating snippet:', id, 'for user:', userId);
+    
+    // Sanitize the data first
+    const cleanData = sanitizeFirestoreData(snippetData);
+    
+    // Prepare update data - ensure no undefined values
+    const updateData = {
+      ...cleanData,
+      updatedAt: new Date().toISOString()
+    };
+    
+    console.log('Sanitized update data:', updateData);
+    
+    // Create document reference with explicit string parameters
+    const snippetRef = doc(db, COLLECTION_NAME, String(id));
+    
+    // Update the document
+    await updateDoc(snippetRef, updateData);
+    
+    console.log('Snippet updated successfully');
   } catch (error) {
-    console.error("Error updating snippet:", error);
-    throw error;
+    console.error('Error updating snippet:', error);
+    throw new Error(`Failed to update snippet: ${error.message}`);
   }
 };
 
-export const deleteSnippet = async (id) => {
-  try {
-    const stringId = ensureStringId(id);
-    await deleteDoc(doc(db, SNIPPET_COLLECTION, stringId));
-  } catch (error) {
-    console.error("Error deleting snippet:", error);
-    throw error;
+// Delete snippet
+export const deleteSnippet = async (id, userId) => {
+  if (!userId || typeof userId !== 'string') {
+    throw new Error('Valid user ID string is required');
   }
+  
+  if (!id || typeof id !== 'string') {
+    throw new Error('Valid snippet ID string is required');
+  }
+
+  try {
+    console.log('Deleting snippet:', id, 'for user:', userId);
+    
+    // Create document reference with explicit string parameters
+    const snippetRef = doc(db, COLLECTION_NAME, String(id));
+    
+    // Delete the document
+    await deleteDoc(snippetRef);
+    
+    console.log('Snippet deleted successfully');
+  } catch (error) {
+    console.error('Error deleting snippet:', error);
+    throw new Error(`Failed to delete snippet: ${error.message}`);
+  }
+};
+
+// Batch operations for import/export
+export const batchAddSnippets = async (snippets, userId) => {
+  if (!userId || typeof userId !== 'string') {
+    throw new Error('Valid user ID string is required');
+  }
+  
+  if (!Array.isArray(snippets)) {
+    throw new Error('Snippets must be an array');
+  }
+
+  const results = [];
+  
+  for (const snippet of snippets) {
+    try {
+      const id = await addSnippet(snippet, userId);
+      results.push(id);
+      // Small delay to avoid overwhelming Firestore
+      await new Promise(resolve => setTimeout(resolve, 100));
+    } catch (error) {
+      console.error(`Failed to add snippet: ${snippet?.title || 'Unknown'}`, error);
+      throw error;
+    }
+  }
+  
+  return results;
 };
