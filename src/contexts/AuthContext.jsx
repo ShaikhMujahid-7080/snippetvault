@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
-import { 
-  auth, 
-  db 
+import {
+  auth,
+  db
 } from '../utils/firebase';
 import {
   createUserWithEmailAndPassword,
@@ -56,11 +56,10 @@ export const AuthProvider = ({ children }) => {
       }
 
       const { user } = await createUserWithEmailAndPassword(auth, email.trim(), password);
-      
       await updateProfile(user, { displayName: displayName.trim() });
-      
+
       const userRole = email.trim() === ADMIN_EMAIL ? 'admin' : 'user';
-      
+
       try {
         await setDoc(doc(db, 'users', user.uid), {
           uid: user.uid,
@@ -69,16 +68,16 @@ export const AuthProvider = ({ children }) => {
           role: userRole,
           createdAt: serverTimestamp(),
           lastLoginAt: serverTimestamp(),
-          isActive: true,
+          isActive: true,  // ✅ Explicitly set to true for new users
           snippetCount: 0
         });
       } catch (firestoreError) {
-        console.warn('Failed to create user profile in Firestore:', firestoreError);
+        console.warn("Failed to create user profile in Firestore:", firestoreError);
       }
 
       return user;
     } catch (error) {
-      console.error('Signup error:', error);
+      console.error("Signup error:", error);
       throw error;
     }
   };
@@ -94,7 +93,7 @@ export const AuthProvider = ({ children }) => {
       }
 
       const { user } = await signInWithEmailAndPassword(auth, email.trim(), password);
-      
+
       // Update last login time (non-blocking)
       try {
         await updateDoc(doc(db, 'users', user.uid), {
@@ -157,7 +156,7 @@ export const AuthProvider = ({ children }) => {
   // Admin functions
   const getAllUsers = async () => {
     if (!isAdmin) throw new Error('Unauthorized: Admin access required');
-    
+
     try {
       const usersSnapshot = await getDocs(collection(db, 'users'));
       const users = [];
@@ -173,7 +172,7 @@ export const AuthProvider = ({ children }) => {
 
   const suspendUser = async (uid) => {
     if (!isAdmin) throw new Error('Unauthorized: Admin access required');
-    
+
     try {
       await updateDoc(doc(db, 'users', uid), {
         isActive: false,
@@ -187,7 +186,7 @@ export const AuthProvider = ({ children }) => {
 
   const activateUser = async (uid) => {
     if (!isAdmin) throw new Error('Unauthorized: Admin access required');
-    
+
     try {
       await updateDoc(doc(db, 'users', uid), {
         isActive: true,
@@ -201,15 +200,15 @@ export const AuthProvider = ({ children }) => {
 
   const getUserStats = async () => {
     if (!isAdmin) throw new Error('Unauthorized: Admin access required');
-    
+
     try {
       const usersSnapshot = await getDocs(collection(db, 'users'));
       const totalUsers = usersSnapshot.size;
-      
+
       let activeUsers = 0;
       let suspendedUsers = 0;
       let adminUsers = 0;
-      
+
       usersSnapshot.forEach((doc) => {
         const userData = doc.data();
         if (userData.isActive) activeUsers++;
@@ -230,23 +229,26 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // ✅ UPDATED (2025-10-17 00:55 IST)
+
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       try {
         if (user) {
           setCurrentUser(user);
-          
+
           // Get user profile from Firestore
           const profile = await getUserProfile(user.uid);
           setUserProfile(profile);
-          
+
           // Check if user is admin
           setIsAdmin(profile?.role === 'admin');
-          
-          // Check if user is suspended
-          if (profile && !profile.isActive) {
+
+          // ✅ UPDATED: Only check suspension if isActive field explicitly exists and is false
+          // If isActive field is missing (undefined), treat as active by default
+          if (profile && profile.isActive === false) {
             await signOut(auth);
-            throw new Error('Account suspended. Please contact administrator.');
+            throw new Error("Account suspended. Please contact administrator.");
           }
         } else {
           setCurrentUser(null);
@@ -254,7 +256,7 @@ export const AuthProvider = ({ children }) => {
           setIsAdmin(false);
         }
       } catch (error) {
-        console.error('Auth state change error:', error);
+        console.error("Auth state change error:", error);
         setCurrentUser(null);
         setUserProfile(null);
         setIsAdmin(false);
@@ -265,6 +267,7 @@ export const AuthProvider = ({ children }) => {
 
     return unsubscribe;
   }, []);
+
 
   const value = {
     currentUser,

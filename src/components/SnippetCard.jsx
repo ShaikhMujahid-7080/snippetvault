@@ -1,26 +1,29 @@
 import { useState } from 'react';
 import { MdStar, MdStarBorder, MdEdit, MdDelete } from 'react-icons/md';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { 
-  vscDarkPlus, 
-  vs, 
-  materialDark, 
+import {
+  vscDarkPlus,
+  vs,
+  materialDark,
   materialLight,
   oneLight,
-  oneDark 
+  oneDark
 } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { toast } from 'react-toastify';
 import { useTheme } from '../hooks/useTheme';
+// 🆕 ADDED (2025-10-16 13:50 IST)
+import MarkdownPreview from './MarkdownPreview';
+
 
 const SnippetCard = ({ snippet, onEdit, onDelete, onToggleFavorite }) => {
   const { theme } = useTheme();
   const [showFullCodeIndexes, setShowFullCodeIndexes] = useState([]);
-  
+
   // Dynamic theme selection for syntax highlighter
   const getSyntaxTheme = () => {
     return theme === 'dark' ? oneDark : oneLight;
   };
-  
+
   const copyToClipboard = async (text) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -35,8 +38,8 @@ const SnippetCard = ({ snippet, onEdit, onDelete, onToggleFavorite }) => {
   };
 
   const toggleCodeExpansion = (index) => {
-    setShowFullCodeIndexes(prev => 
-      prev.includes(index) 
+    setShowFullCodeIndexes(prev =>
+      prev.includes(index)
         ? prev.filter(i => i !== index)
         : [...prev, index]
     );
@@ -44,10 +47,10 @@ const SnippetCard = ({ snippet, onEdit, onDelete, onToggleFavorite }) => {
 
   // Create unique tags array to prevent duplicate keys
   const uniqueTags = snippet.tags ? [...new Set(snippet.tags)] : [];
-  
+
   // Handle both single category (legacy) and multiple categories
-  const displayCategories = snippet.categories && Array.isArray(snippet.categories) 
-    ? snippet.categories 
+  const displayCategories = snippet.categories && Array.isArray(snippet.categories)
+    ? snippet.categories
     : (snippet.category ? [snippet.category] : ['Uncategorized']);
 
   return (
@@ -57,29 +60,31 @@ const SnippetCard = ({ snippet, onEdit, onDelete, onToggleFavorite }) => {
           <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
             {snippet.title}
           </h3>
-          <p className="text-gray-600 dark:text-gray-400 text-sm mb-3">
-            {snippet.description}
-          </p>
+
+          {/* // ✅ UPDATED (2025-10-16 13:51 IST)
+          // Replace plain text description with markdown rendering */}
+          <MarkdownPreview content={snippet.description || ''} className="mb-3" />
+
           <div className="flex items-center gap-2 mb-3 flex-wrap">
             {/* Display multiple categories */}
             {displayCategories.map((category, index) => (
-              <span 
+              <span
                 key={`${snippet.id}-category-${index}`}
                 className="px-2 py-1 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 text-xs rounded-full"
               >
                 {category}
               </span>
             ))}
-            
+
             {/* Language badge */}
             <span className="px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 text-xs rounded-full">
               {snippet.language || 'text'}
             </span>
-            
+
             {/* Tags */}
             {uniqueTags.map((tag, index) => (
-              <span 
-                key={`${snippet.id}-tag-${index}-${tag}`} 
+              <span
+                key={`${snippet.id}-tag-${index}-${tag}`}
                 className="px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 text-xs rounded-full"
               >
                 {tag}
@@ -87,7 +92,7 @@ const SnippetCard = ({ snippet, onEdit, onDelete, onToggleFavorite }) => {
             ))}
           </div>
         </div>
-        
+
         <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
           <button
             onClick={() => onToggleFavorite(snippet.id)}
@@ -132,9 +137,9 @@ const SnippetCard = ({ snippet, onEdit, onDelete, onToggleFavorite }) => {
               <div className="mb-2 text-sm font-medium text-gray-800 dark:text-gray-200">
                 {description}
               </div>
-              
+
               {/* Clickable code block with hidden scrollbar and dynamic theme */}
-              <div 
+              <div
                 className="cursor-pointer hover:opacity-80 transition-opacity border-2 border-transparent hover:border-primary-300 dark:hover:border-primary-600 rounded-lg overflow-hidden"
                 onClick={() => copyToClipboard(code)}
                 title="Click to copy this snippet"
@@ -177,7 +182,7 @@ const SnippetCard = ({ snippet, onEdit, onDelete, onToggleFavorite }) => {
         })
       ) : (
         // Single code snippet (legacy support) with hidden scrollbar and dynamic theme
-        <div 
+        <div
           className="cursor-pointer hover:opacity-80 transition-opacity border-2 border-transparent hover:border-primary-300 dark:hover:border-primary-600 rounded-lg overflow-hidden"
           onClick={() => copyToClipboard(snippet.code)}
           title="Click to copy this snippet"

@@ -17,6 +17,18 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { exportSnippets, importSnippets } from './utils/storage';
 import { useLocalStorage } from './hooks/useLocalStorage';
 
+// 🆕 ADDED (2025-10-16 15:35 IST)
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { db } from './utils/firebase';
+
+// 🆕 ADDED (2025-10-17 00:35 IST)
+import { whenFirestoreReady } from './utils/firebase';
+
+// 🆕 ADDED (2025-10-17 02:27 IST)
+import SkeletonCard from './components/SkeletonCard';
+
+
+
 const defaultCategories = ["All", "Favourite", "General", "Markdown", "GitHub", "GPT for Study", "ADB", "CMD", "LaTeX", "Uncategorized"];
 const defaultLanguages = ["JavaScript", "Python", "CSS", "HTML", "JSON", "Markdown", "Bash", "SQL", "TypeScript", "React", "Node.js", "PHP", "Java", "C++", "Go", "Rust"];
 
@@ -49,7 +61,10 @@ function AppContent() {
   const [snippets, setSnippets] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [categories, setCategories] = useLocalStorage(`categories-${currentUser?.uid}`, defaultCategories);
+
+  // ✅ UPDATED (2025-10-16 15:22 IST)
+  const [categories, setCategories] = useState(defaultCategories);
+
   const [languages] = useState(defaultLanguages);
   const [activeCategory, setActiveCategory] = useState("All");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -72,11 +87,57 @@ function AppContent() {
     type: 'danger'
   });
 
+  // Load user categories from Firestore
+  // ✅ UPDATED (2025-10-17 00:45 IST)
+  useEffect(() => {
+    const loadUserCategories = async (retryCount = 0) => {
+      if (!currentUser?.uid) {
+        setCategories(defaultCategories);
+        return;
+      }
+
+      try {
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        const userDoc = await getDoc(userDocRef);
+
+        if (userDoc.exists()) {
+          const userCategories = userDoc.data().categories;
+          if (userCategories && Array.isArray(userCategories) && userCategories.length > 0) {
+            const mergedCategories = [...new Set([...defaultCategories, ...userCategories])];
+            setCategories(mergedCategories);
+          } else {
+            console.log('No categories in user doc, setting default');
+            setCategories(defaultCategories);
+          }
+        } else {
+          console.log('User document does not exist, setting default categories');
+          setCategories(defaultCategories);
+        }
+      } catch (error) {
+        // Retry if offline and haven't exceeded retry limit
+        if (error.message.includes('client is offline') && retryCount < 5) {
+          console.warn(`⚠️ Firestore offline, retry ${retryCount + 1}/5 in 2 seconds...`);
+          setTimeout(() => loadUserCategories(retryCount + 1), 2000);
+        } else {
+          console.error('❌ Error loading user categories:', error);
+          setCategories(defaultCategories);
+        }
+      }
+    };
+
+    loadUserCategories();
+  }, [currentUser?.uid]);
+
+
+
+
+
   // Enhanced initial load effect - runs immediately when user is available
+  // ✅ UPDATED (2025-10-17 01:45 IST)
   useEffect(() => {
     let isMounted = true;
-    
-    const loadInitialData = async () => {
+
+    const loadInitialData = async (retryCount = 0) => {
       if (!currentUser?.uid) {
         setSnippets([]);
         setLoading(false);
@@ -84,41 +145,52 @@ function AppContent() {
         return;
       }
 
-      console.log('Initial load starting for user:', currentUser.uid);
-      setLoading(true);
-      setError(null);
-      
+      // Only show loading on first attempt
+      if (retryCount === 0) {
+        setLoading(true);
+        setError(null);
+      }
+
       try {
         const data = await getAllSnippets(currentUser.uid);
-        
+
         if (isMounted) {
           setSnippets(Array.isArray(data) ? data : []);
-          console.log(`Initial load complete: ${data?.length || 0} snippets`);
+          setLoading(false);
+          setInitialLoadComplete(true);
+          console.log('✅ Initial load complete:', data?.length || 0, 'snippets');
         }
       } catch (error) {
         console.error('Initial load error:', error);
+
+        // Retry if Firestore is offline and haven't exceeded retry limit
+        if ((error.message.includes('client is offline') || error.message.includes('Failed to get')) && retryCount < 5) {
+          console.warn(`⚠️ Firestore offline during initial load, retry ${retryCount + 1}/5 in 2 seconds...`);
+          setTimeout(() => {
+            if (isMounted) loadInitialData(retryCount + 1);
+          }, 2000);
+          return; // Don't execute finally block, let retry handle it
+        }
+
+        // Max retries reached or different error
         if (isMounted) {
           setError(error.message || 'Failed to load snippets');
           setSnippets([]);
-          toast.error('Failed to load snippets on startup', {
+          setLoading(false);
+          setInitialLoadComplete(true);
+          toast.error('Failed to load snippets. Please try refreshing.', {
             toastId: 'initial-load-error',
             autoClose: 5000
           });
-        }
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-          setInitialLoadComplete(true);
         }
       }
     };
 
     loadInitialData();
+    return () => { isMounted = false; };
+  }, [currentUser?.uid]);
 
-    return () => {
-      isMounted = false;
-    };
-  }, [currentUser?.uid]); // Only depend on user ID
+
 
   const fetchSnippets = async () => {
     if (!currentUser?.uid) {
@@ -126,15 +198,14 @@ function AppContent() {
       return;
     }
 
-    console.log('Manual fetch starting for user:', currentUser.uid);
     setLoading(true);
     setError(null);
-    
+
     try {
       const data = await getAllSnippets(currentUser.uid);
-      
+
       setSnippets(Array.isArray(data) ? data : []);
-      
+
       if (data && data.length > 0) {
         console.log(`Manual fetch complete: ${data.length} snippets`);
         toast.success(`Loaded ${data.length} snippets`, {
@@ -147,7 +218,7 @@ function AppContent() {
       console.error('Manual fetch error:', error);
       setError(error.message || 'Failed to load snippets');
       setSnippets([]);
-      
+
       toast.error('Failed to load snippets. Please try refreshing.', {
         toastId: 'fetch-error',
         autoClose: 5000
@@ -162,7 +233,7 @@ function AppContent() {
 
     let filtered = snippets.filter(snippet => {
       let matchesCategory = activeCategory === 'All';
-      
+
       if (activeCategory === 'Favourite') {
         matchesCategory = snippet.isFavorite;
       } else if (!matchesCategory) {
@@ -226,19 +297,56 @@ function AppContent() {
     setActiveCategory(category);
   };
 
-  const handleAddCategory = (newCategoryName) => {
+  // ✅ UPDATED (2025-10-16 15:28 IST)
+  const handleAddCategory = async (newCategoryName) => {
+    if (!currentUser?.uid) {
+      toast.error('You must be logged in to add categories');
+      return;
+    }
+
     if (!categories.includes(newCategoryName)) {
-      setCategories(prev => [...prev, newCategoryName]);
-      toast.success(`Category "${newCategoryName}" added!`);
+      const updatedCategories = [...categories, newCategoryName];
+      setCategories(updatedCategories);
+
+      // Save to Firestore
+      try {
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        await setDoc(userDocRef, {
+          categories: updatedCategories,
+          updatedAt: new Date().toISOString(),
+        }, { merge: true }); // <-- merge so existing data not overwritten
+        toast.success(`Category "${newCategoryName}" added!`);
+      } catch (error) {
+        console.error('Error saving category:', error);
+        setCategories(categories);
+        toast.error('Failed to save category');
+      }
     } else {
       toast.error('Category already exists!');
     }
   };
 
-  const handleReorderCategories = (newCategories) => {
+
+  // ✅ UPDATED (2025-10-16 15:30 IST)
+  const handleReorderCategories = async (newCategories) => {
+    if (!currentUser?.uid) return;
+
     setCategories(newCategories);
-    toast.success('Categories reordered!');
+
+    // Save to Firestore
+    try {
+      const userDocRef = doc(db, 'users', currentUser.uid);
+      await setDoc(userDocRef, {
+        categories: newCategories,
+        updatedAt: new Date().toISOString()
+      });
+      toast.success('Categories reordered!');
+    } catch (error) {
+      console.error('Error saving category order:', error);
+      toast.error('Failed to save category order');
+    }
   };
+
 
   const handleSaveSnippet = async (snippetData) => {
     if (!currentUser?.uid) {
@@ -247,11 +355,14 @@ function AppContent() {
     }
 
     try {
-      console.log('Saving snippet:', snippetData);
-      
       // Clean and validate the snippet data
-      const cleanData = cleanSnippetData(snippetData);
-      
+      // ✅ UPDATED (2025-10-16 13:05 IST)
+      const cleanData = {
+        ...cleanSnippetData(snippetData),
+        code: snippetData.code,        // preserve 'code' field
+        snippets: snippetData.snippets // preserve multi-snippet blocks
+      };
+
       // Handle new categories
       if (cleanData.categories && Array.isArray(cleanData.categories)) {
         const newCategories = cleanData.categories.filter(cat => !categories.includes(cat));
@@ -262,7 +373,6 @@ function AppContent() {
 
       if (snippetData.id && editingSnippet) {
         // Update existing snippet
-        console.log('Updating existing snippet:', snippetData.id);
         await updateSnippet(String(snippetData.id), cleanData, currentUser.uid);
         toast.success('Snippet updated successfully!');
       } else {
@@ -271,10 +381,10 @@ function AppContent() {
         await addSnippet(cleanData, currentUser.uid);
         toast.success('Snippet added successfully!');
       }
-      
+
       setEditingSnippet(null);
       setIsModalOpen(false);
-      
+
       // Refresh snippets list
       await fetchSnippets();
     } catch (error) {
@@ -286,7 +396,6 @@ function AppContent() {
   };
 
   const handleEditSnippet = (snippet) => {
-    console.log('Editing snippet:', snippet);
     if (snippet && snippet.id) {
       // Create a clean copy for editing
       const editableSnippet = {
@@ -302,7 +411,7 @@ function AppContent() {
         snippets: snippet.snippets || [],
         isFavorite: Boolean(snippet.isFavorite)
       };
-      
+
       setEditingSnippet(editableSnippet);
       setIsModalOpen(true);
     } else {
@@ -318,18 +427,16 @@ function AppContent() {
 
     const snippet = snippets.find(s => s.id === id);
     const snippetTitle = snippet ? snippet.title : 'this snippet';
-    
-    console.log('Requesting delete for snippet:', id, snippetTitle);
-    
+
+
     showConfirmDialog(
       'Delete Snippet',
       `Are you sure you want to delete "${snippetTitle}"? This action cannot be undone.`,
       async () => {
         try {
-          console.log('Confirmed delete for snippet:', id);
           await deleteSnippet(String(id), currentUser.uid);
           toast.success('Snippet deleted successfully!');
-          
+
           // Refresh snippets list
           await fetchSnippets();
         } catch (error) {
@@ -354,40 +461,40 @@ function AppContent() {
         toast.error('Snippet not found');
         return;
       }
-      
+
       console.log('Toggling favorite for snippet:', id, 'current:', snippet.isFavorite);
-      
+
       // Create updated snippet data
       const updatedSnippet = cleanSnippetData({
-        ...snippet, 
-        isFavorite: !snippet.isFavorite 
+        ...snippet,
+        isFavorite: !snippet.isFavorite
       });
-      
+
       // Optimistically update UI
-      setSnippets(prevSnippets => 
-        prevSnippets.map(s => 
+      setSnippets(prevSnippets =>
+        prevSnippets.map(s =>
           s.id === id ? { ...s, isFavorite: !s.isFavorite } : s
         )
       );
-      
+
       // Update in database
       await updateSnippet(String(id), updatedSnippet, currentUser.uid);
-      
+
       // Refresh to ensure consistency
       await fetchSnippets();
-      
+
       toast.success(updatedSnippet.isFavorite ? 'Added to favorites' : 'Removed from favorites');
-      
+
     } catch (error) {
       console.error('Toggle favorite error:', error);
-      
+
       // Revert optimistic update on error
-      setSnippets(prevSnippets => 
-        prevSnippets.map(s => 
+      setSnippets(prevSnippets =>
+        prevSnippets.map(s =>
           s.id === id ? { ...s, isFavorite: !s.isFavorite } : s
         )
       );
-      
+
       toast.error('Failed to update favorite status. Please try again.');
     }
   };
@@ -406,11 +513,22 @@ function AppContent() {
         try {
           const updatedCategories = categories.filter(cat => cat !== categoryToDelete);
           setCategories(updatedCategories);
-          
+
+          // Save to Firestore
+          try {
+            const userDocRef = doc(db, 'users', currentUser.uid);
+            await setDoc(userDocRef, {
+              categories: updatedCategories,
+              updatedAt: new Date().toISOString()
+            });
+          } catch (error) {
+            console.error('Error saving categories after deletion:', error);
+          }
+
           if (activeCategory === categoryToDelete) {
             setActiveCategory('All');
           }
-          
+
           // Update snippets that use this category
           const snippetsToUpdate = snippets.filter(snippet => {
             if (snippet.categories && Array.isArray(snippet.categories)) {
@@ -424,7 +542,7 @@ function AppContent() {
           // Update each affected snippet
           for (const snippet of snippetsToUpdate) {
             let newSnippet = cleanSnippetData(snippet);
-            
+
             if (snippet.categories && Array.isArray(snippet.categories)) {
               newSnippet.categories = snippet.categories.filter(cat => cat !== categoryToDelete);
               if (newSnippet.categories.length === 0) {
@@ -435,7 +553,7 @@ function AppContent() {
               newSnippet.category = 'Uncategorized';
               newSnippet.categories = ['Uncategorized'];
             }
-            
+
             try {
               await updateSnippet(String(snippet.id), newSnippet, currentUser.uid);
             } catch (error) {
@@ -522,7 +640,7 @@ function AppContent() {
             </div>
             <div className="flex items-center gap-3 flex-wrap">
               <ThemeToggle />
-              
+
               <button
                 onClick={fetchSnippets}
                 disabled={loading}
@@ -532,7 +650,7 @@ function AppContent() {
                 <MdRefresh className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
                 Refresh
               </button>
-              
+
               {isAdmin && (
                 <button
                   onClick={() => setShowAdminPanel(true)}
@@ -543,7 +661,7 @@ function AppContent() {
                   Admin
                 </button>
               )}
-              
+
               <label className="cursor-pointer flex items-center gap-2 px-4 py-2 glass-effect rounded-lg hover:bg-white/20 dark:hover:bg-gray-700/30 transition-all duration-200 text-gray-700 dark:text-gray-300 hover:scale-105">
                 <MdUpload className="w-4 h-4" />
                 Import
@@ -554,7 +672,7 @@ function AppContent() {
                   className="hidden"
                 />
               </label>
-              
+
               <button
                 onClick={handleExport}
                 disabled={snippets.length === 0}
@@ -563,7 +681,7 @@ function AppContent() {
                 <MdDownload className="w-4 h-4" />
                 Export
               </button>
-              
+
               <button
                 onClick={() => {
                   setEditingSnippet(null);
@@ -633,7 +751,7 @@ function AppContent() {
             </div>
             <div className="stat-label">Total Snippets</div>
           </div>
-          
+
           <div className="stat-card">
             <div className="flex items-center justify-center mb-3">
               <div className="p-3 bg-gradient-to-br from-green-500 to-emerald-500 rounded-full">
@@ -645,7 +763,7 @@ function AppContent() {
             </div>
             <div className="stat-label">Categories</div>
           </div>
-          
+
           <div className="stat-card">
             <div className="flex items-center justify-center mb-3">
               <div className="p-3 bg-gradient-to-br from-yellow-500 to-orange-500 rounded-full">
@@ -657,7 +775,7 @@ function AppContent() {
             </div>
             <div className="stat-label">Favorites</div>
           </div>
-          
+
           <div className="stat-card">
             <div className="flex items-center justify-center mb-3">
               <div className="p-3 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full">
@@ -687,23 +805,24 @@ function AppContent() {
 
         {/* Snippets Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+          {/* // ✅ UPDATED (2025-10-17 02:28 IST) */}
           {loading ? (
-            <div className="col-span-full text-center py-16">
-              <div className="animate-spin rounded-full h-16 w-16 border-b-4 border-indigo-600 mx-auto mb-6"></div>
-              <span className="text-xl text-gray-600 dark:text-gray-400">
-                {initialLoadComplete ? 'Refreshing snippets...' : 'Loading snippets...'}
-              </span>
-            </div>
+            <>
+              {/* Skeleton loaders - show 6 cards */}
+              {[...Array(6)].map((_, index) => (
+                <SkeletonCard key={`skeleton-${index}`} />
+              ))}
+            </>
           ) : filteredSnippets.length === 0 && !error ? (
-            <div className="col-span-full">
+            <div className = "col-span-full" >
               <div className="empty-state">
                 <div className="text-8xl mb-6">📝</div>
                 <h3 className="text-2xl font-bold text-gray-700 dark:text-gray-300 mb-4">
                   {snippets.length === 0 ? 'No snippets yet' : 'No snippets match your filter'}
                 </h3>
                 <p className="text-lg text-gray-500 dark:text-gray-400 mb-6">
-                  {snippets.length === 0 
-                    ? 'Create your first snippet to get started!' 
+                  {snippets.length === 0
+                    ? 'Create your first snippet to get started!'
                     : 'Try adjusting your search terms or filters'
                   }
                 </p>
@@ -720,64 +839,64 @@ function AppContent() {
                 )}
               </div>
             </div>
-          ) : (
+        ) : (
             filteredSnippets.map(snippet => (
-              <SnippetCard
-                key={snippet.id}
-                snippet={snippet}
-                onEdit={handleEditSnippet}
-                onDelete={handleDeleteSnippet}
-                onToggleFavorite={handleToggleFavorite}
-              />
-            ))
+        <SnippetCard
+          key={snippet.id}
+          snippet={snippet}
+          onEdit={handleEditSnippet}
+          onDelete={handleDeleteSnippet}
+          onToggleFavorite={handleToggleFavorite}
+        />
+        ))
           )}
-        </div>
-
-        {/* Add/Edit Modal */}
-        <AddSnippetModal
-          isOpen={isModalOpen}
-          onClose={() => {
-            setIsModalOpen(false);
-            setEditingSnippet(null);
-          }}
-          onSave={handleSaveSnippet}
-          snippet={editingSnippet}
-          categories={categories}
-          languages={languages}
-        />
-
-        {/* Admin Panel */}
-        <AdminPanel
-          isOpen={showAdminPanel}
-          onClose={() => setShowAdminPanel(false)}
-        />
-
-        {/* Custom Confirmation Dialog */}
-        <ConfirmationDialog
-          isOpen={confirmDialog.isOpen}
-          onClose={closeConfirmDialog}
-          onConfirm={confirmDialog.onConfirm}
-          title={confirmDialog.title}
-          message={confirmDialog.message}
-          type={confirmDialog.type}
-        />
-
-        {/* Toast Container */}
-        <ToastContainer
-          position="bottom-right"
-          autoClose={3000}
-          hideProgressBar
-          newestOnTop={false}
-          closeOnClick
-          rtl={false}
-          pauseOnFocusLoss
-          draggable
-          pauseOnHover
-          theme="colored"
-          className="!z-50"
-        />
       </div>
+
+      {/* Add/Edit Modal */}
+      <AddSnippetModal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingSnippet(null);
+        }}
+        onSave={handleSaveSnippet}
+        snippet={editingSnippet}
+        categories={categories}
+        languages={languages}
+      />
+
+      {/* Admin Panel */}
+      <AdminPanel
+        isOpen={showAdminPanel}
+        onClose={() => setShowAdminPanel(false)}
+      />
+
+      {/* Custom Confirmation Dialog */}
+      <ConfirmationDialog
+        isOpen={confirmDialog.isOpen}
+        onClose={closeConfirmDialog}
+        onConfirm={confirmDialog.onConfirm}
+        title={confirmDialog.title}
+        message={confirmDialog.message}
+        type={confirmDialog.type}
+      />
+
+      {/* Toast Container */}
+      <ToastContainer
+        position="bottom-right"
+        autoClose={3000}
+        hideProgressBar
+        newestOnTop={false}
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="colored"
+        className="!z-50"
+      />
     </div>
+    </div >
   );
 }
 

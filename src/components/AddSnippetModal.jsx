@@ -25,12 +25,12 @@ const AddSnippetModal = ({ isOpen, onClose, onSave, snippet, categories = [], la
     control: (provided, state) => ({
       ...provided,
       backgroundColor: theme === 'dark' ? '#374151' : '#ffffff',
-      borderColor: state.isFocused 
+      borderColor: state.isFocused
         ? (theme === 'dark' ? '#6366f1' : '#4f46e5')
         : (theme === 'dark' ? '#4b5563' : '#d1d5db'),
       color: theme === 'dark' ? '#f9fafb' : '#374151',
       minHeight: '2.75rem',
-      boxShadow: state.isFocused 
+      boxShadow: state.isFocused
         ? `0 0 0 3px ${theme === 'dark' ? 'rgba(99, 102, 241, 0.3)' : 'rgba(99, 102, 241, 0.2)'}`
         : provided.boxShadow,
       '&:hover': {
@@ -41,17 +41,17 @@ const AddSnippetModal = ({ isOpen, onClose, onSave, snippet, categories = [], la
       ...provided,
       backgroundColor: theme === 'dark' ? '#374151' : '#ffffff',
       border: `1px solid ${theme === 'dark' ? '#4b5563' : '#d1d5db'}`,
-      boxShadow: theme === 'dark' 
-        ? '0 10px 15px -3px rgba(0, 0, 0, 0.3)' 
+      boxShadow: theme === 'dark'
+        ? '0 10px 15px -3px rgba(0, 0, 0, 0.3)'
         : '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
     }),
     option: (provided, state) => ({
       ...provided,
-      backgroundColor: state.isFocused 
+      backgroundColor: state.isFocused
         ? (theme === 'dark' ? '#4f46e5' : '#e0e7ff')
-        : state.isSelected 
-        ? (theme === 'dark' ? '#6366f1' : '#4f46e5')
-        : 'transparent',
+        : state.isSelected
+          ? (theme === 'dark' ? '#6366f1' : '#4f46e5')
+          : 'transparent',
       color: state.isSelected || state.isFocused
         ? (theme === 'dark' ? '#ffffff' : state.isSelected ? '#ffffff' : '#1f2937')
         : (theme === 'dark' ? '#f9fafb' : '#374151'),
@@ -87,20 +87,20 @@ const AddSnippetModal = ({ isOpen, onClose, onSave, snippet, categories = [], la
   });
 
   useEffect(() => {
-    const safeCategories = Array.isArray(categories) 
-      ? categories.filter(cat => typeof cat === 'string' && cat.length > 0) 
+    const safeCategories = Array.isArray(categories)
+      ? categories.filter(cat => typeof cat === 'string' && cat.length > 0)
       : [];
-    
-    const safeLanguages = Array.isArray(languages) 
-      ? languages.filter(lang => typeof lang === 'string' && lang.length > 0) 
+
+    const safeLanguages = Array.isArray(languages)
+      ? languages.filter(lang => typeof lang === 'string' && lang.length > 0)
       : [];
-    
+
     const defaultLanguage = safeLanguages[0] || 'text';
 
     if (snippet) {
       const hasMultiSnippets = snippet.snippets && snippet.snippets.length > 0;
       setUseMultiSnippets(hasMultiSnippets);
-      
+
       // Handle both single category (legacy) and multiple categories
       let snippetCategories = [];
       if (snippet.categories && Array.isArray(snippet.categories)) {
@@ -110,7 +110,7 @@ const AddSnippetModal = ({ isOpen, onClose, onSave, snippet, categories = [], la
       } else {
         snippetCategories = ['Uncategorized'];
       }
-      
+
       setFormData({
         title: String(snippet.title || ''),
         description: String(snippet.description || ''),
@@ -132,7 +132,7 @@ const AddSnippetModal = ({ isOpen, onClose, onSave, snippet, categories = [], la
       });
       setUseMultiSnippets(false);
     }
-    
+
     setShowLanguageInput(false);
     setCustomLanguage('');
   }, [snippet, categories, languages, isOpen]);
@@ -149,15 +149,15 @@ const AddSnippetModal = ({ isOpen, onClose, onSave, snippet, categories = [], la
 
   const processTagsInput = (tagsString) => {
     if (!tagsString || !tagsString.trim()) return [];
-    
+
     const tags = String(tagsString)
       .split(',')
       .map(tag => tag.trim())
       .filter(tag => tag.length > 0);
-    
+
     const uniqueTags = [];
     const seen = new Set();
-    
+
     for (const tag of tags) {
       const lowerTag = tag.toLowerCase();
       if (!seen.has(lowerTag)) {
@@ -165,7 +165,7 @@ const AddSnippetModal = ({ isOpen, onClose, onSave, snippet, categories = [], la
         uniqueTags.push(tag);
       }
     }
-    
+
     return uniqueTags;
   };
 
@@ -226,13 +226,13 @@ const AddSnippetModal = ({ isOpen, onClose, onSave, snippet, categories = [], la
 
   // Handle category changes for multi-select
   const handleCategoryChange = (selectedOptions) => {
-    const selectedCategories = selectedOptions 
+    const selectedCategories = selectedOptions
       ? selectedOptions.map(option => option.value)
       : ['Uncategorized'];
-    
+
     // Ensure at least one category is selected, default to Uncategorized
     const finalCategories = selectedCategories.length > 0 ? selectedCategories : ['Uncategorized'];
-    
+
     setFormData(prev => ({
       ...prev,
       categories: finalCategories
@@ -241,12 +241,12 @@ const AddSnippetModal = ({ isOpen, onClose, onSave, snippet, categories = [], la
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    
+
     const processedTags = processTagsInput(formData.tags);
-    
+
     // Ensure categories array has at least Uncategorized
     const finalCategories = formData.categories.length > 0 ? formData.categories : ['Uncategorized'];
-    
+
     const snippetData = {
       title: formData.title,
       description: formData.description,
@@ -268,16 +268,16 @@ const AddSnippetModal = ({ isOpen, onClose, onSave, snippet, categories = [], la
       snippetData.language = formData.language;
       snippetData.snippets = []; // Clear multi snippets
     }
-    
+
     onSave(snippetData);
   };
 
-  const safeCategories = Array.isArray(categories) 
-    ? categories.filter(cat => typeof cat === 'string' && cat.length > 0) 
+  const safeCategories = Array.isArray(categories)
+    ? categories.filter(cat => typeof cat === 'string' && cat.length > 0)
     : [];
 
-  const safeLanguages = Array.isArray(languages) 
-    ? languages.filter(lang => typeof lang === 'string' && lang.length > 0) 
+  const safeLanguages = Array.isArray(languages)
+    ? languages.filter(lang => typeof lang === 'string' && lang.length > 0)
     : [];
 
   // Prepare category options for react-select
@@ -328,16 +328,16 @@ const AddSnippetModal = ({ isOpen, onClose, onSave, snippet, categories = [], la
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Description
-            </label>
-            <input
-              type="text"
+            {/* // ✅ UPDATED (2025-10-16 14:13 IST) */}
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Description</label>
+            <textarea
+              rows={4}
               value={formData.description}
-              onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-              className="w-full p-3 glass-effect rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-gray-900 dark:text-gray-100"
-              placeholder="Brief description of the snippet"
+              onChange={(e) => setFormData((prev) => ({ ...prev, description: e.target.value }))}
+              className="w-full p-3 glass-effect rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-gray-900 dark:text-gray-100 resize-y"
+              placeholder="Brief description of the snippet (supports Markdown)"
             />
+
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -370,16 +370,15 @@ const AddSnippetModal = ({ isOpen, onClose, onSave, snippet, categories = [], la
                 <select
                   value={formData.language}
                   onChange={(e) => setFormData(prev => ({ ...prev, language: e.target.value }))}
-                  className={`flex-1 p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 ${
-                    theme === 'dark' 
-                      ? 'bg-gray-700 border-gray-600 text-gray-100' 
+                  className={`flex-1 p-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 ${theme === 'dark'
+                      ? 'bg-gray-700 border-gray-600 text-gray-100'
                       : 'glass-effect text-gray-900'
-                  }`}
+                    }`}
                 >
                   {safeLanguages.map((language) => (
-                    <option 
-                      key={language} 
-                      value={language} 
+                    <option
+                      key={language}
+                      value={language}
                       className={theme === 'dark' ? 'bg-gray-700 text-gray-100' : 'bg-white text-gray-900'}
                     >
                       {language}
@@ -395,7 +394,7 @@ const AddSnippetModal = ({ isOpen, onClose, onSave, snippet, categories = [], la
                   + New
                 </button>
               </div>
-              
+
               {showLanguageInput && (
                 <div className="mt-2 flex gap-2">
                   <input
@@ -452,7 +451,7 @@ const AddSnippetModal = ({ isOpen, onClose, onSave, snippet, categories = [], la
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {previewTags.map((tag, index) => (
-                    <span 
+                    <span
                       key={index}
                       className="px-2 py-1 bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 text-xs rounded-full"
                     >

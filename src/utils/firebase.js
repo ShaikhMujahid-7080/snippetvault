@@ -1,10 +1,11 @@
-// Import only the required Firebase modules
-import { initializeApp } from "firebase/app";
-import { getFirestore, enableNetwork, disableNetwork } from "firebase/firestore"; 
+// ✅ UPDATED (2025-10-17 00:28 IST)
+
+import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
+import { getFirestore, onSnapshot, collection } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAQQR2LhALHOWcwIOZWec_ONRRtpG2A--A",
+  apiKey: "AIzaSyAQQR2LhALHOWcwIOZWec_ONRRtpG2A--A",  // ✅ CORRECT API KEY
   authDomain: "snippetvault-db.firebaseapp.com",
   projectId: "snippetvault-db",
   storageBucket: "snippetvault-db.appspot.com",
@@ -13,29 +14,64 @@ const firebaseConfig = {
   measurementId: "G-DRWRYV6JF4"
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
-
-// Initialize Firebase Authentication and get a reference to the service
 export const auth = getAuth(app);
-
-// Initialize Cloud Firestore and get a reference to the service
 export const db = getFirestore(app);
 
-// Force disable and re-enable network to clear any cached corruption
-const initializeFirestore = async () => {
-  try {
-    await disableNetwork(db);
-    console.log('Firestore offline mode enabled');
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    await enableNetwork(db);
-    console.log('Firestore online mode restored');
-  } catch (error) {
-    console.warn('Firestore network reset failed:', error);
+// 🆕 ADDED (2025-10-17 00:30 IST)
+// Track Firestore connectivity status
+let isFirestoreOnline = false;
+const firestoreReadyCallbacks = [];
+
+// Network state monitor using a dummy collection listener
+const monitorFirestoreConnection = () => {
+  const dummyRef = collection(db, '__connection_test__');
+  
+  onSnapshot(
+    dummyRef,
+    () => {
+      if (!isFirestoreOnline) {
+        isFirestoreOnline = true;
+        console.log('✅ Firestore is now ONLINE');
+        
+        // Execute all pending callbacks waiting for connection
+        firestoreReadyCallbacks.forEach(callback => callback());
+        firestoreReadyCallbacks.length = 0;
+      }
+    },
+    (error) => {
+      if (isFirestoreOnline) {
+        isFirestoreOnline = false;
+        console.warn('⚠️ Firestore went OFFLINE:', error);
+      }
+    }
+  );
+};
+
+// 🆕 ADDED (2025-10-17 00:32 IST)
+// Wait for Firestore to be online before executing callback
+export const whenFirestoreReady = (callback) => {
+  if (isFirestoreOnline) {
+    callback();
+  } else {
+    firestoreReadyCallbacks.push(callback);
   }
 };
 
-// Initialize on app start
+// ✅ UPDATED (2025-10-17 01:55 IST)
+
+// Remove the force disable/enable network cycle
+const initializeFirestore = async () => {
+  try {
+    // Just start monitoring, don't force offline/online cycle
+    console.log("Firestore initialized");
+    monitorFirestoreConnection();
+  } catch (error) {
+    console.warn("Firestore initialization failed:", error);
+  }
+};
+
 initializeFirestore();
+
 
 export default app;
